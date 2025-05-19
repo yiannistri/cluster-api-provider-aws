@@ -18,7 +18,7 @@ limitations under the License.
 package elb
 
 import (
-	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go/service/elb/elbiface"
 	"github.com/aws/aws-sdk-go/service/elbv2/elbv2iface"
 	"github.com/aws/aws-sdk-go/service/resourcegroupstaggingapi/resourcegroupstaggingapiiface"
@@ -32,7 +32,7 @@ import (
 // One alternative is to have a large list of functions from the ec2 client.
 type Service struct {
 	scope                 scope.ELBScope
-	EC2Client             ec2iface.EC2API
+	EC2Client             *ec2.Client
 	ELBClient             elbiface.ELBAPI
 	ELBV2Client           elbv2iface.ELBV2API
 	ResourceTaggingClient resourcegroupstaggingapiiface.ResourceGroupsTaggingAPIAPI

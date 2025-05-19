@@ -25,9 +25,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go/service/ssm"
 	"github.com/blang/semver"
 	"github.com/pkg/errors"
@@ -115,9 +115,9 @@ func GenerateAmiName(amiNameFormat, baseOS, kubernetesVersion string) (string, e
 // Determine architecture based on instance type.
 func (s *Service) pickArchitectureForInstanceType(instanceType string) (string, error) {
 	descInstanceTypeInput := &ec2.DescribeInstanceTypesInput{
-		InstanceTypes: []*string{&instanceType},
+		InstanceTypes: []types.InstanceType{types.InstanceType(instanceType)},
 	}
-	describeInstanceTypeResult, err := s.EC2Client.DescribeInstanceTypesWithContext(context.TODO(), descInstanceTypeInput)
+	describeInstanceTypeResult, err := s.EC2Client.DescribeInstanceTypes(context.TODO(), descInstanceTypeInput)
 	if err != nil {
 		// if call to DescribeInstanceTypes fails due to permissions error, log a warning and return the default architecture.
 		if awserrors.IsPermissionsError(err) {
@@ -141,12 +141,12 @@ func (s *Service) pickArchitectureForInstanceType(instanceType string) (string, 
 	architecture := ""
 archCheck:
 	for _, a := range supportedArchs {
-		switch *a {
+		switch a {
 		case Amd64ArchitectureTag:
-			architecture = *a
+			architecture = string(a)
 			break archCheck
 		case Arm64ArchitectureTag:
-			architecture = *a
+			architecture = string(a)
 			break archCheck
 		}
 	}
@@ -161,7 +161,7 @@ archCheck:
 }
 
 // DefaultAMILookup will do a default AMI lookup.
-func DefaultAMILookup(ec2Client ec2iface.EC2API, ownerID, baseOS, kubernetesVersion, architecture, amiNameFormat string) (*ec2.Image, error) {
+func DefaultAMILookup(ec2Client EC2API, ownerID, baseOS, kubernetesVersion, architecture, amiNameFormat string) (*types.Image, error) {
 	if amiNameFormat == "" {
 		amiNameFormat = DefaultAmiNameFormat
 	}
@@ -177,31 +177,31 @@ func DefaultAMILookup(ec2Client ec2iface.EC2API, ownerID, baseOS, kubernetesVers
 		return nil, errors.Wrapf(err, "failed to process ami format: %q", amiNameFormat)
 	}
 	describeImageInput := &ec2.DescribeImagesInput{
-		Filters: []*ec2.Filter{
+		Filters: []types.Filter{
 			{
 				Name:   aws.String("owner-id"),
-				Values: []*string{aws.String(ownerID)},
+				Values: []string{ownerID},
 			},
 			{
 				Name:   aws.String("name"),
-				Values: []*string{aws.String(amiName)},
+				Values: []string{amiName},
 			},
 			{
 				Name:   aws.String("architecture"),
-				Values: []*string{aws.String(architecture)},
+				Values: []string{architecture},
 			},
 			{
 				Name:   aws.String("state"),
-				Values: []*string{aws.String("available")},
+				Values: []string{"available"},
 			},
 			{
 				Name:   aws.String("virtualization-type"),
-				Values: []*string{aws.String("hvm")},
+				Values: []string{"hvm"},
 			},
 		},
 	}
 
-	out, err := ec2Client.DescribeImagesWithContext(context.TODO(), describeImageInput)
+	out, err := ec2Client.DescribeImages(context.TODO(), describeImageInput)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to find ami: %q", amiName)
 	}
@@ -224,11 +224,11 @@ func (s *Service) defaultAMIIDLookup(amiNameFormat, ownerID, baseOS, architectur
 		return "", errors.Wrapf(err, "failed to find ami")
 	}
 
-	s.scope.Debug("Found and using an existing AMI", "ami-id", aws.StringValue(latestImage.ImageId))
-	return aws.StringValue(latestImage.ImageId), nil
+	s.scope.Debug("Found and using an existing AMI", "ami-id", aws.ToString(latestImage.ImageId))
+	return aws.ToString(latestImage.ImageId), nil
 }
 
-type images []*ec2.Image
+type images []types.Image
 
 // Len is the number of elements in the collection.
 func (i images) Len() int {
@@ -239,8 +239,8 @@ func (i images) Len() int {
 // index i should sort before the element with index j.
 // At this point all CreationDates have been checked for errors so ignoring the error is ok.
 func (i images) Less(k, j int) bool {
-	firstTime, _ := time.Parse(createDateTimestampFormat, aws.StringValue(i[k].CreationDate))
-	secondTime, _ := time.Parse(createDateTimestampFormat, aws.StringValue(i[j].CreationDate))
+	firstTime, _ := time.Parse(createDateTimestampFormat, aws.ToString(i[k].CreationDate))
+	secondTime, _ := time.Parse(createDateTimestampFormat, aws.ToString(i[j].CreationDate))
 	return firstTime.Before(secondTime)
 }
 
@@ -250,35 +250,35 @@ func (i images) Swap(k, j int) {
 }
 
 // GetLatestImage assumes imgs is not empty. Responsibility of the caller to check.
-func GetLatestImage(imgs []*ec2.Image) (*ec2.Image, error) {
+func GetLatestImage(imgs []types.Image) (*types.Image, error) {
 	for _, img := range imgs {
-		if _, err := time.Parse(createDateTimestampFormat, aws.StringValue(img.CreationDate)); err != nil {
+		if _, err := time.Parse(createDateTimestampFormat, aws.ToString(img.CreationDate)); err != nil {
 			return nil, err
 		}
 	}
 	// old to new (newest one is last)
 	sort.Sort(images(imgs))
-	return imgs[len(imgs)-1], nil
+	return &imgs[len(imgs)-1], nil
 }
 
 func (s *Service) defaultBastionAMILookup() (string, error) {
 	describeImageInput := &ec2.DescribeImagesInput{
-		Filters: []*ec2.Filter{
+		Filters: []types.Filter{
 			{
 				Name:   aws.String("architecture"),
-				Values: []*string{aws.String("x86_64")},
+				Values: []string{"x86_64"},
 			},
 			{
 				Name:   aws.String("state"),
-				Values: []*string{aws.String("available")},
+				Values: []string{"available"},
 			},
 			{
 				Name:   aws.String("virtualization-type"),
-				Values: []*string{aws.String("hvm")},
+				Values: []string{"hvm"},
 			},
 			{
 				Name:   aws.String("description"),
-				Values: aws.StringSlice([]string{ubuntuImageDescription}),
+				Values: []string{ubuntuImageDescription},
 			},
 		},
 	}
@@ -289,13 +289,13 @@ func (s *Service) defaultBastionAMILookup() (string, error) {
 		ownerID = ubuntuOwnerIDUsGov
 	}
 
-	filter := &ec2.Filter{
+	filter := types.Filter{
 		Name:   aws.String("owner-id"),
-		Values: []*string{aws.String(ownerID)},
+		Values: []string{ownerID},
 	}
 	describeImageInput.Filters = append(describeImageInput.Filters, filter)
 
-	out, err := s.EC2Client.DescribeImagesWithContext(context.TODO(), describeImageInput)
+	out, err := s.EC2Client.DescribeImages(context.TODO(), describeImageInput)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to describe images within region: %q", s.scope.Region())
 	}
@@ -351,7 +351,7 @@ func (s *Service) eksAMILookup(kubernetesVersion string, architecture string, am
 		return "", errors.Errorf("SSM parameter returned with nil value: %q", paramName)
 	}
 
-	id := aws.StringValue(out.Parameter.Value)
+	id := aws.ToString(out.Parameter.Value)
 	s.scope.Info("found AMI", "id", id, "version", formattedVersion)
 
 	return id, nil

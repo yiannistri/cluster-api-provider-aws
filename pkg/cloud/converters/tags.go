@@ -19,7 +19,8 @@ package converters
 import (
 	"sort"
 
-	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/elb"
@@ -31,12 +32,12 @@ import (
 	infrav1 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 )
 
-// TagsToMap converts a []*ec2.Tag into a infrav1.Tags.
-func TagsToMap(src []*ec2.Tag) infrav1.Tags {
+// TagsToMap converts a []types.Tag into a infrav1.Tags.
+func TagsToMap(src []types.Tag) infrav1.Tags {
 	tags := make(infrav1.Tags, len(src))
 
 	for _, t := range src {
-		tags[*t.Key] = *t.Value
+		tags[aws.ToString(t.Key)] = aws.ToString(t.Value)
 	}
 
 	return tags
@@ -59,6 +60,25 @@ func MapToTags(src infrav1.Tags) []*ec2.Tag {
 
 	for k, v := range src {
 		tag := &ec2.Tag{
+			Key:   aws.String(k),
+			Value: aws.String(v),
+		}
+
+		tags = append(tags, tag)
+	}
+
+	// Sort so that unit tests can expect a stable order
+	sort.Slice(tags, func(i, j int) bool { return *tags[i].Key < *tags[j].Key })
+
+	return tags
+}
+
+// TODO: yiannistri - replace V1 version above with this one after Go SDK V2 migration.
+func MapToTagsV2(src infrav1.Tags) []types.Tag {
+	tags := make([]types.Tag, 0, len(src))
+
+	for k, v := range src {
+		tag := types.Tag{
 			Key:   aws.String(k),
 			Value: aws.String(v),
 		}

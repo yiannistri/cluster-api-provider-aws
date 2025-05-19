@@ -23,9 +23,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go/service/eks"
 	"github.com/aws/aws-sdk-go/service/eks/eksiface"
 	"github.com/pkg/errors"
@@ -96,11 +96,11 @@ func (b *Builder) Ensure(current infrav1.Tags) error {
 }
 
 // WithEC2 is used to denote that the tags builder will be using EC2.
-func WithEC2(ec2client ec2iface.EC2API) BuilderOption {
+func WithEC2(ec2client *ec2.Client) BuilderOption {
 	return func(b *Builder) {
 		b.applyFunc = func(params *infrav1.BuildParams) error {
 			tags := infrav1.Build(*params)
-			awsTags := make([]*ec2.Tag, 0, len(tags))
+			awsTags := make([]types.Tag, 0, len(tags))
 
 			// For testing, we need sorted keys
 			sortedKeys := make([]string, 0, len(tags))
@@ -113,7 +113,7 @@ func WithEC2(ec2client ec2iface.EC2API) BuilderOption {
 			sort.Strings(sortedKeys)
 
 			for _, key := range sortedKeys {
-				tag := &ec2.Tag{
+				tag := types.Tag{
 					Key:   aws.String(key),
 					Value: aws.String(tags[key]),
 				}
@@ -121,11 +121,11 @@ func WithEC2(ec2client ec2iface.EC2API) BuilderOption {
 			}
 
 			createTagsInput := &ec2.CreateTagsInput{
-				Resources: aws.StringSlice([]string{params.ResourceID}),
+				Resources: []string{params.ResourceID},
 				Tags:      awsTags,
 			}
 
-			_, err := ec2client.CreateTagsWithContext(context.TODO(), createTagsInput)
+			_, err := ec2client.CreateTags(context.TODO(), createTagsInput)
 			return errors.Wrapf(err, "failed to tag resource %q in cluster %q", params.ResourceID, params.ClusterName)
 		}
 	}
@@ -172,10 +172,10 @@ func computeDiff(current infrav1.Tags, buildParams infrav1.BuildParams) infrav1.
 }
 
 // BuildParamsToTagSpecification builds a TagSpecification for the specified resource type.
-func BuildParamsToTagSpecification(ec2ResourceType string, params infrav1.BuildParams) *ec2.TagSpecification {
+func BuildParamsToTagSpecification(ec2ResourceType types.ResourceType, params infrav1.BuildParams) types.TagSpecification {
 	tags := infrav1.Build(params)
 
-	tagSpec := &ec2.TagSpecification{ResourceType: aws.String(ec2ResourceType)}
+	tagSpec := types.TagSpecification{ResourceType: types.ResourceType(ec2ResourceType)}
 
 	// For testing, we need sorted keys
 	sortedKeys := make([]string, 0, len(tags))
@@ -186,7 +186,7 @@ func BuildParamsToTagSpecification(ec2ResourceType string, params infrav1.BuildP
 	sort.Strings(sortedKeys)
 
 	for _, key := range sortedKeys {
-		tagSpec.Tags = append(tagSpec.Tags, &ec2.Tag{
+		tagSpec.Tags = append(tagSpec.Tags, types.Tag{
 			Key:   aws.String(key),
 			Value: aws.String(tags[key]),
 		})

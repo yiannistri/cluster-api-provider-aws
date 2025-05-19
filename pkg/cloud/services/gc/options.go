@@ -17,7 +17,7 @@ limitations under the License.
 package gc
 
 import (
-	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go/service/elb/elbiface"
 	"github.com/aws/aws-sdk-go/service/elbv2/elbv2iface"
 	"github.com/aws/aws-sdk-go/service/resourcegroupstaggingapi/resourcegroupstaggingapiiface"
@@ -48,7 +48,7 @@ func withResourceTaggingClient(client resourcegroupstaggingapiiface.ResourceGrou
 }
 
 // withEC2Client is an option for specifying a AWS EC2 Client.
-func withEC2Client(client ec2iface.EC2API) ServiceOption {
+func withEC2Client(client *ec2.Client) ServiceOption {
 	return func(s *Service) {
 		s.ec2Client = client
 	}

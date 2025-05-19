@@ -141,7 +141,7 @@ func (m *MachineScope) GetInstanceID() *string {
 	if err != nil {
 		return nil
 	}
-	return ptr.To[string](parsed.ID())
+	return ptr.To(parsed.ID())
 }
 
 // GetProviderID returns the AWSMachine providerID from the spec.
@@ -155,12 +155,12 @@ func (m *MachineScope) GetProviderID() string {
 // SetProviderID sets the AWSMachine providerID in spec.
 func (m *MachineScope) SetProviderID(instanceID, availabilityZone string) {
 	providerID := GenerateProviderID(availabilityZone, instanceID)
-	m.AWSMachine.Spec.ProviderID = ptr.To[string](providerID)
+	m.AWSMachine.Spec.ProviderID = ptr.To(providerID)
 }
 
 // SetInstanceID sets the AWSMachine instanceID in spec.
 func (m *MachineScope) SetInstanceID(instanceID string) {
-	m.AWSMachine.Spec.InstanceID = ptr.To[string](instanceID)
+	m.AWSMachine.Spec.InstanceID = ptr.To(instanceID)
 }
 
 // GetInstanceState returns the AWSMachine instance state from the status.
@@ -185,7 +185,7 @@ func (m *MachineScope) SetNotReady() {
 
 // SetFailureMessage sets the AWSMachine status failure message.
 func (m *MachineScope) SetFailureMessage(v error) {
-	m.AWSMachine.Status.FailureMessage = ptr.To[string](v.Error())
+	m.AWSMachine.Status.FailureMessage = ptr.To(v.Error())
 }
 
 // SetFailureReason sets the AWSMachine status failure reason.

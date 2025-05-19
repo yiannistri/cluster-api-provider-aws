@@ -20,8 +20,8 @@ package gc
 import (
 	"context"
 
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go/aws/arn"
-	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/aws/aws-sdk-go/service/elb/elbiface"
 	"github.com/aws/aws-sdk-go/service/elbv2/elbv2iface"
 	"github.com/aws/aws-sdk-go/service/resourcegroupstaggingapi/resourcegroupstaggingapiiface"
@@ -36,7 +36,7 @@ type Service struct {
 	elbClient             elbiface.ELBAPI
 	elbv2Client           elbv2iface.ELBV2API
 	resourceTaggingClient resourcegroupstaggingapiiface.ResourceGroupsTaggingAPIAPI
-	ec2Client             ec2iface.EC2API
+	ec2Client             *ec2.Client
 	cleanupFuncs          ResourceCleanupFuncs
 	collectFuncs          ResourceCollectFuncs
 }

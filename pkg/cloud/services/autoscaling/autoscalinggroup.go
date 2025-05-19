@@ -23,9 +23,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
-	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
@@ -42,13 +43,13 @@ import (
 // SDKToAutoScalingGroup converts an AWS EC2 SDK AutoScalingGroup to the CAPA AutoScalingGroup type.
 func (s *Service) SDKToAutoScalingGroup(v *autoscaling.Group) (*expinfrav1.AutoScalingGroup, error) {
 	i := &expinfrav1.AutoScalingGroup{
-		ID:   aws.StringValue(v.AutoScalingGroupARN),
-		Name: aws.StringValue(v.AutoScalingGroupName),
+		ID:   aws.ToString(v.AutoScalingGroupARN),
+		Name: aws.ToString(v.AutoScalingGroupName),
 		// TODO(rudoi): this is just terrible
-		DesiredCapacity:   aws.Int32(int32(aws.Int64Value(v.DesiredCapacity))), //#nosec G115
-		MaxSize:           int32(aws.Int64Value(v.MaxSize)),                    //#nosec G115
-		MinSize:           int32(aws.Int64Value(v.MinSize)),                    //#nosec G115
-		CapacityRebalance: aws.BoolValue(v.CapacityRebalance),
+		DesiredCapacity:   aws.Int32(int32(aws.ToInt64(v.DesiredCapacity))), //#nosec G115
+		MaxSize:           int32(aws.ToInt64(v.MaxSize)),                    //#nosec G115
+		MinSize:           int32(aws.ToInt64(v.MinSize)),                    //#nosec G115
+		CapacityRebalance: aws.ToBool(v.CapacityRebalance),
 		// TODO: determine what additional values go here and what else should be in the struct
 	}
 
@@ -65,10 +66,10 @@ func (s *Service) SDKToAutoScalingGroup(v *autoscaling.Group) (*expinfrav1.AutoS
 		}
 
 		for _, override := range v.MixedInstancesPolicy.LaunchTemplate.Overrides {
-			i.MixedInstancesPolicy.Overrides = append(i.MixedInstancesPolicy.Overrides, expinfrav1.Overrides{InstanceType: aws.StringValue(override.InstanceType)})
+			i.MixedInstancesPolicy.Overrides = append(i.MixedInstancesPolicy.Overrides, expinfrav1.Overrides{InstanceType: aws.ToString(override.InstanceType)})
 		}
 
-		onDemandAllocationStrategy := aws.StringValue(v.MixedInstancesPolicy.InstancesDistribution.OnDemandAllocationStrategy)
+		onDemandAllocationStrategy := aws.ToString(v.MixedInstancesPolicy.InstancesDistribution.OnDemandAllocationStrategy)
 		switch onDemandAllocationStrategy {
 		case string(expinfrav1.OnDemandAllocationStrategyPrioritized):
 			i.MixedInstancesPolicy.InstancesDistribution.OnDemandAllocationStrategy = expinfrav1.OnDemandAllocationStrategyPrioritized
@@ -78,7 +79,7 @@ func (s *Service) SDKToAutoScalingGroup(v *autoscaling.Group) (*expinfrav1.AutoS
 			return nil, fmt.Errorf("unsupported on-demand allocation strategy: %s", onDemandAllocationStrategy)
 		}
 
-		spotAllocationStrategy := aws.StringValue(v.MixedInstancesPolicy.InstancesDistribution.SpotAllocationStrategy)
+		spotAllocationStrategy := aws.ToString(v.MixedInstancesPolicy.InstancesDistribution.SpotAllocationStrategy)
 		switch spotAllocationStrategy {
 		case string(expinfrav1.SpotAllocationStrategyLowestPrice):
 			i.MixedInstancesPolicy.InstancesDistribution.SpotAllocationStrategy = expinfrav1.SpotAllocationStrategyLowestPrice
@@ -104,7 +105,7 @@ func (s *Service) SDKToAutoScalingGroup(v *autoscaling.Group) (*expinfrav1.AutoS
 	if len(v.Instances) > 0 {
 		for _, autoscalingInstance := range v.Instances {
 			tmp := &infrav1.Instance{
-				ID:               aws.StringValue(autoscalingInstance.InstanceId),
+				ID:               aws.ToString(autoscalingInstance.InstanceId),
 				State:            infrav1.InstanceState(*autoscalingInstance.LifecycleState),
 				AvailabilityZone: *autoscalingInstance.AvailabilityZone,
 			}
@@ -115,7 +116,7 @@ func (s *Service) SDKToAutoScalingGroup(v *autoscaling.Group) (*expinfrav1.AutoS
 	if len(v.SuspendedProcesses) > 0 {
 		currentlySuspendedProcesses := make([]string, len(v.SuspendedProcesses))
 		for i, service := range v.SuspendedProcesses {
-			currentlySuspendedProcesses[i] = aws.StringValue(service.ProcessName)
+			currentlySuspendedProcesses[i] = aws.ToString(service.ProcessName)
 		}
 		i.CurrentlySuspendProcesses = currentlySuspendedProcesses
 	}
@@ -199,7 +200,7 @@ func (s *Service) CreateASG(machinePoolScope *scope.MachinePoolScope) (*expinfra
 	}
 
 	if desiredCapacity != nil {
-		input.DesiredCapacity = aws.Int64(int64(aws.Int32Value(desiredCapacity)))
+		input.DesiredCapacity = aws.Int64(int64(aws.ToInt32(desiredCapacity)))
 	}
 
 	if machinePoolScope.AWSMachinePool.Spec.MixedInstancesPolicy != nil {
@@ -498,24 +499,24 @@ func mapToTags(input map[string]string, resourceID *string) []*autoscaling.Tag {
 // SubnetIDs return subnet IDs of a AWSMachinePool based on given subnetIDs and filters.
 func (s *Service) SubnetIDs(scope *scope.MachinePoolScope) ([]string, error) {
 	subnetIDs := make([]string, 0)
-	var inputFilters = make([]*ec2.Filter, 0)
+	var inputFilters = make([]types.Filter, 0)
 
 	for _, subnet := range scope.AWSMachinePool.Spec.Subnets {
 		switch {
 		case subnet.ID != nil:
-			subnetIDs = append(subnetIDs, aws.StringValue(subnet.ID))
+			subnetIDs = append(subnetIDs, aws.ToString(subnet.ID))
 		case subnet.Filters != nil:
 			for _, eachFilter := range subnet.Filters {
-				inputFilters = append(inputFilters, &ec2.Filter{
+				inputFilters = append(inputFilters, types.Filter{
 					Name:   aws.String(eachFilter.Name),
-					Values: aws.StringSlice(eachFilter.Values),
+					Values: eachFilter.Values,
 				})
 			}
 		}
 	}
 
 	if len(inputFilters) > 0 {
-		out, err := s.EC2Client.DescribeSubnetsWithContext(context.TODO(), &ec2.DescribeSubnetsInput{
+		out, err := s.EC2Client.DescribeSubnets(context.TODO(), &ec2.DescribeSubnetsInput{
 			Filters: inputFilters,
 		})
 		if err != nil {
@@ -533,7 +534,7 @@ func (s *Service) SubnetIDs(scope *scope.MachinePoolScope) ([]string, error) {
 		}
 
 		if len(subnetIDs) == 0 {
-			errMessage := fmt.Sprintf("failed to create ASG %q, no subnets available matching criteria %q", scope.Name(), inputFilters)
+			errMessage := fmt.Sprintf("failed to create ASG %q, no subnets available matching criteria %v", scope.Name(), inputFilters)
 			record.Warnf(scope.AWSMachinePool, "FailedCreate", errMessage)
 			return subnetIDs, awserrors.NewFailedDependency(errMessage)
 		}

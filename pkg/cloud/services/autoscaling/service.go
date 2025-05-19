@@ -17,8 +17,8 @@ limitations under the License.
 package asg
 
 import (
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
-	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 
 	"sigs.k8s.io/cluster-api-provider-aws/v2/pkg/cloud"
 	"sigs.k8s.io/cluster-api-provider-aws/v2/pkg/cloud/scope"
@@ -30,7 +30,7 @@ import (
 type Service struct {
 	scope     cloud.ClusterScoper
 	ASGClient autoscalingiface.AutoScalingAPI
-	EC2Client ec2iface.EC2API
+	EC2Client *ec2.Client
 }
 
 // NewService returns a new service given the asg api client.

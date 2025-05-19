@@ -19,9 +19,9 @@ package eks
 import (
 	"net/http"
 
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
-	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/aws/aws-sdk-go/service/eks"
 	"github.com/aws/aws-sdk-go/service/eks/eksiface"
 	"github.com/aws/aws-sdk-go/service/sts/stsiface"
@@ -48,7 +48,7 @@ type EKSClient struct {
 // One alternative is to have a large list of functions from the ec2 client.
 type Service struct {
 	scope     *scope.ManagedControlPlaneScope
-	EC2Client ec2iface.EC2API
+	EC2Client *ec2.Client
 	EKSClient EKSAPI
 	iam.IAMService
 	STSClient stsiface.STSAPI

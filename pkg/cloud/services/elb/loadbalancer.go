@@ -23,10 +23,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/elb"
 	"github.com/aws/aws-sdk-go/service/elbv2"
 	rgapi "github.com/aws/aws-sdk-go/service/resourcegroupstaggingapi"
@@ -351,9 +351,9 @@ func (s *Service) getAPIServerLBSpec(elbName string, lbSpec *infrav1.AWSLoadBala
 		// This set of subnets may not match the subnets specified on the Cluster, so we may not have already discovered them
 		// We need to call out to AWS to describe them just in case
 		input := &ec2.DescribeSubnetsInput{
-			SubnetIds: aws.StringSlice(lbSpec.Subnets),
+			SubnetIds: lbSpec.Subnets,
 		}
-		out, err := s.EC2Client.DescribeSubnetsWithContext(context.TODO(), input)
+		out, err := s.EC2Client.DescribeSubnets(context.TODO(), input)
 		if err != nil {
 			return nil, err
 		}
@@ -486,7 +486,7 @@ func (s *Service) describeLB(name string, lbSpec *infrav1.AWSLoadBalancerSpec) (
 
 	if lbSpec != nil &&
 		lbSpec.Scheme != nil &&
-		string(*lbSpec.Scheme) != aws.StringValue(out.LoadBalancers[0].Scheme) {
+		string(*lbSpec.Scheme) != aws.ToString(out.LoadBalancers[0].Scheme) {
 		return nil, errors.Errorf(
 			"Load balancer names must be unique within a region: %q Load balancer already exists in this region with a different scheme %q",
 			name, *out.LoadBalancers[0].Scheme)
@@ -499,7 +499,7 @@ func (s *Service) describeLB(name string, lbSpec *infrav1.AWSLoadBalancerSpec) (
 		return nil, errors.Wrapf(err, "failed to describe load balancer %q attributes", name)
 	}
 
-	tags, err := s.describeLBTags(aws.StringValue(out.LoadBalancers[0].LoadBalancerArn))
+	tags, err := s.describeLBTags(aws.ToString(out.LoadBalancers[0].LoadBalancerArn))
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to describe load balancer tags")
 	}
@@ -787,7 +787,7 @@ func (s *Service) IsInstanceRegisteredWithAPIServerELB(i *infrav1.Instance) (boo
 	}
 
 	for _, registeredInstance := range output.LoadBalancerDescriptions[0].Instances {
-		if aws.StringValue(registeredInstance.InstanceId) == i.ID {
+		if aws.ToString(registeredInstance.InstanceId) == i.ID {
 			return true, nil
 		}
 	}
@@ -833,8 +833,8 @@ func (s *Service) IsInstanceRegisteredWithAPIServerLB(i *infrav1.Instance, lb *i
 			return nil, false, errors.Wrapf(err, "error describing ELB's target groups health %q", name)
 		}
 		for _, id := range instanceHealth.TargetHealthDescriptions {
-			if aws.StringValue(id.Target.Id) == i.ID {
-				targetGroupARNs = append(targetGroupARNs, aws.StringValue(tg.TargetGroupArn))
+			if aws.ToString(id.Target.Id) == i.ID {
+				targetGroupARNs = append(targetGroupARNs, aws.ToString(tg.TargetGroupArn))
 			}
 		}
 	}
@@ -927,7 +927,7 @@ func (s *Service) RegisterInstanceWithAPIServerLB(instance *infrav1.Instance, lb
 			},
 		}
 		if _, err = s.ELBV2Client.RegisterTargets(input); err != nil {
-			return fmt.Errorf("failed to register instance with target group '%s': %w", aws.StringValue(tg.TargetGroupName), err)
+			return fmt.Errorf("failed to register instance with target group '%s': %w", aws.ToString(tg.TargetGroupName), err)
 		}
 	}
 
@@ -939,9 +939,9 @@ func (s *Service) getControlPlaneLoadBalancerSubnets() (infrav1.Subnets, error) 
 	var subnets infrav1.Subnets
 
 	input := &ec2.DescribeSubnetsInput{
-		SubnetIds: aws.StringSlice(s.scope.ControlPlaneLoadBalancer().Subnets),
+		SubnetIds: s.scope.ControlPlaneLoadBalancer().Subnets,
 	}
-	res, err := s.EC2Client.DescribeSubnetsWithContext(context.TODO(), input)
+	res, err := s.EC2Client.DescribeSubnets(context.TODO(), input)
 	if err != nil {
 		return nil, err
 	}
@@ -1134,9 +1134,9 @@ func (s *Service) getAPIServerClassicELBSpec(elbName string) (*infrav1.LoadBalan
 		// This set of subnets may not match the subnets specified on the Cluster, so we may not have already discovered them
 		// We need to call out to AWS to describe them just in case
 		input := &ec2.DescribeSubnetsInput{
-			SubnetIds: aws.StringSlice(s.scope.ControlPlaneLoadBalancer().Subnets),
+			SubnetIds: s.scope.ControlPlaneLoadBalancer().Subnets,
 		}
-		out, err := s.EC2Client.DescribeSubnetsWithContext(context.TODO(), input)
+		out, err := s.EC2Client.DescribeSubnets(context.TODO(), input)
 		if err != nil {
 			return nil, err
 		}
@@ -1304,23 +1304,23 @@ func (s *Service) deleteLB(arn string) error {
 		return fmt.Errorf("failed to gather listeners: %w", err)
 	}
 	for _, listener := range listeners.Listeners {
-		s.scope.Debug("deleting listener", "arn", aws.StringValue(listener.ListenerArn))
+		s.scope.Debug("deleting listener", "arn", aws.ToString(listener.ListenerArn))
 		deleteListener := &elbv2.DeleteListenerInput{
 			ListenerArn: listener.ListenerArn,
 		}
 		if _, err := s.ELBV2Client.DeleteListener(deleteListener); err != nil {
-			return fmt.Errorf("failed to delete listener '%s': %w", aws.StringValue(listener.ListenerArn), err)
+			return fmt.Errorf("failed to delete listener '%s': %w", aws.ToString(listener.ListenerArn), err)
 		}
 	}
 	s.scope.Info("Successfully deleted all associated ClassicELBListeners")
 
 	for _, group := range groups.TargetGroups {
-		s.scope.Debug("deleting target group", "name", aws.StringValue(group.TargetGroupName))
+		s.scope.Debug("deleting target group", "name", aws.ToString(group.TargetGroupName))
 		deleteTargetGroup := &elbv2.DeleteTargetGroupInput{
 			TargetGroupArn: group.TargetGroupArn,
 		}
 		if _, err := s.ELBV2Client.DeleteTargetGroup(deleteTargetGroup); err != nil {
-			return fmt.Errorf("failed to delete target group '%s': %w", aws.StringValue(group.TargetGroupName), err)
+			return fmt.Errorf("failed to delete target group '%s': %w", aws.ToString(group.TargetGroupName), err)
 		}
 	}
 
@@ -1469,7 +1469,7 @@ func (s *Service) describeClassicELB(name string) (*infrav1.LoadBalancer, error)
 
 	if s.scope.ControlPlaneLoadBalancer() != nil &&
 		s.scope.ControlPlaneLoadBalancer().Scheme != nil &&
-		string(*s.scope.ControlPlaneLoadBalancer().Scheme) != aws.StringValue(out.LoadBalancerDescriptions[0].Scheme) {
+		string(*s.scope.ControlPlaneLoadBalancer().Scheme) != aws.ToString(out.LoadBalancerDescriptions[0].Scheme) {
 		return nil, errors.Errorf(
 			"ELB names must be unique within a region: %q ELB already exists in this region with a different scheme %q",
 			name, *out.LoadBalancerDescriptions[0].Scheme)
@@ -1770,11 +1770,11 @@ func (s *Service) getHealthCheckTarget() string {
 
 func fromSDKTypeToClassicELB(v *elb.LoadBalancerDescription, attrs *elb.LoadBalancerAttributes, tags []*elb.Tag) *infrav1.LoadBalancer {
 	res := &infrav1.LoadBalancer{
-		Name:             aws.StringValue(v.LoadBalancerName),
+		Name:             aws.ToString(v.LoadBalancerName),
 		Scheme:           infrav1.ELBScheme(*v.Scheme),
-		SubnetIDs:        aws.StringValueSlice(v.Subnets),
-		SecurityGroupIDs: aws.StringValueSlice(v.SecurityGroups),
-		DNSName:          aws.StringValue(v.DNSName),
+		SubnetIDs:        aws.ToStringSlice(v.Subnets),
+		SecurityGroupIDs: aws.ToStringSlice(v.SecurityGroups),
+		DNSName:          aws.ToString(v.DNSName),
 		Tags:             converters.ELBTagsToMap(tags),
 		LoadBalancerType: infrav1.LoadBalancerTypeClassic,
 	}
@@ -1783,7 +1783,7 @@ func fromSDKTypeToClassicELB(v *elb.LoadBalancerDescription, attrs *elb.LoadBala
 		res.ClassicElbAttributes.IdleTimeout = time.Duration(*attrs.ConnectionSettings.IdleTimeout) * time.Second
 	}
 
-	res.ClassicElbAttributes.CrossZoneLoadBalancing = aws.BoolValue(attrs.CrossZoneLoadBalancing.Enabled)
+	res.ClassicElbAttributes.CrossZoneLoadBalancing = aws.ToBool(attrs.CrossZoneLoadBalancing.Enabled)
 
 	return res
 }
@@ -1796,13 +1796,13 @@ func fromSDKTypeToLB(v *elbv2.LoadBalancer, attrs []*elbv2.LoadBalancerAttribute
 		availabilityZones[i] = az.ZoneName
 	}
 	res := &infrav1.LoadBalancer{
-		ARN:               aws.StringValue(v.LoadBalancerArn),
-		Name:              aws.StringValue(v.LoadBalancerName),
-		Scheme:            infrav1.ELBScheme(aws.StringValue(v.Scheme)),
-		SubnetIDs:         aws.StringValueSlice(subnetIDs),
-		SecurityGroupIDs:  aws.StringValueSlice(v.SecurityGroups),
-		AvailabilityZones: aws.StringValueSlice(availabilityZones),
-		DNSName:           aws.StringValue(v.DNSName),
+		ARN:               aws.ToString(v.LoadBalancerArn),
+		Name:              aws.ToString(v.LoadBalancerName),
+		Scheme:            infrav1.ELBScheme(aws.ToString(v.Scheme)),
+		SubnetIDs:         aws.ToStringSlice(subnetIDs),
+		SecurityGroupIDs:  aws.ToStringSlice(v.SecurityGroups),
+		AvailabilityZones: aws.ToStringSlice(availabilityZones),
+		DNSName:           aws.ToString(v.DNSName),
 		Tags:              converters.V2TagsToMap(tags),
 	}
 
